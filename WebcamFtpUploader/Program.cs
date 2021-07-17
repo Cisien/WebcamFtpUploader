@@ -79,6 +79,8 @@ namespace WebcamFtpUploader
 
                     Console.WriteLine($"Done uploading image; FTP Result: {result}");
                     _lastUpdate = DateTimeOffset.UtcNow;
+
+                    await client.DisconnectAsync(cts.Token);
                     await Task.Delay(_uploadInterval);
                 }
                 catch(Exception ex)
@@ -88,8 +90,11 @@ namespace WebcamFtpUploader
                 }
                 finally
                 {
-                    await client.DisconnectAsync(cts.Token);
                     cts.Dispose();
+                    if (client.IsConnected)
+                    {
+                        await client.DisconnectAsync();
+                    }
                 }
             }
         }
