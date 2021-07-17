@@ -1,4 +1,6 @@
-﻿using System;
+﻿using FluentFTP;
+using FluentFTP.Helpers;
+using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -37,45 +39,68 @@ namespace WebcamFtpUploader
             };
 
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_cameraUsername}:{_cameraPassword}")));
+            using var client = new FtpClient();
+            client.EncryptionMode = FtpEncryptionMode.None;
+
+            FtpTrace.LogToConsole = true;
 
             while (true)
             {
                 var cts = new CancellationTokenSource(_uploadInterval / 2);
-                using var imgRequest = await httpClient.GetAsync("/ISAPI/Streaming/channels/101/picture", cts.Token);
-                if (!imgRequest.IsSuccessStatusCode)
+                try
                 {
-                    var responseBody = await imgRequest.Content.ReadAsStringAsync(cts.Token);
-                    Console.WriteLine($"The camera returned an error: {imgRequest.StatusCode}: \n\t{responseBody}");
-                    await Task.Delay(1000);
-                    continue;
+                    Console.WriteLine($"Beginning Read from WebCam: {httpClient.BaseAddress}/ISAPI/Streaming/channels/101/picture");
+                    
+                    using var imgRequest = await httpClient.GetAsync("/ISAPI/Streaming/channels/101/picture", cts.Token);
+                    if (!imgRequest.IsSuccessStatusCode)
+                    {
+                        var responseBody = await imgRequest.Content.ReadAsStringAsync(cts.Token);
+                        Console.WriteLine($"The camera returned an error: {imgRequest.StatusCode}: \n\t{responseBody}");
+                        await Task.Delay(1000);
+                        continue;
+                    }
+                    using var imgStream = await imgRequest.Content.ReadAsStreamAsync(cts.Token);
+                    Console.WriteLine("Done reading from webcam");
+
+                    Console.WriteLine("Begin FTP connection");
+                    await client.ConnectAsync(new FtpProfile
+                    {
+                        Host = "webcam.wunderground.com",
+                        DataConnection = FtpDataConnectionType.PASV,
+                        RetryAttempts = 3,
+                        Credentials = new NetworkCredential(_wundergroundDeviceId, _wundergroundDeviceKey),
+                        Encoding = Encoding.UTF8
+                    });
+                    Console.WriteLine($"FTP Connection established");
+
+                    Console.WriteLine("Uploading image");
+                    var result = await client.UploadAsync(imgStream, "image.jpg");
+
+                    Console.WriteLine($"Done uploading image; FTP Result: {result}");
+                    _lastUpdate = DateTimeOffset.UtcNow;
+                    await Task.Delay(_uploadInterval);
                 }
-                using var imgStream = await imgRequest.Content.ReadAsStreamAsync(cts.Token);
-
-                var ftp = (FtpWebRequest)WebRequest.Create("ftp://webcam.wunderground.com/image.jpg");
-                ftp.Credentials = new NetworkCredential(_wundergroundDeviceId, _wundergroundDeviceKey);
-                ftp.Method = WebRequestMethods.Ftp.UploadFile;
-                ftp.UseBinary = true;
-                ftp.UsePassive = true;
-                ftp.ContentLength = imgRequest.Content.Headers.ContentLength.Value;
-
-                using var ftpRequestStream = await ftp.GetRequestStreamAsync();
-                await imgStream.CopyToAsync(ftpRequestStream, cts.Token);
-                using var response = (FtpWebResponse)await ftp.GetResponseAsync();
-
-                Console.WriteLine($"{response.ResponseUri} uploaded: {response.StatusCode}: {response.StatusDescription}");
-                _lastUpdate = DateTimeOffset.UtcNow;
-                await Task.Delay(_uploadInterval);
+                catch(Exception ex)
+                {
+                    Console.WriteLine($"Exception: {ex.Message}");
+                    await Task.Delay(1000, cts.Token);
+                }
+                finally
+                {
+                    await client.DisconnectAsync(cts.Token);
+                    cts.Dispose();
+                }
             }
         }
 
         private static void Ensure(object value, string name)
         {
-            if(value is null)
+            if (value is null)
             {
                 throw new ArgumentNullException(name);
             }
 
-            if(value is "")
+            if (value is "")
             {
                 throw new ArgumentException("Argument missing value", name);
             }
