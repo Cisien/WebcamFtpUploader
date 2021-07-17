@@ -1,9 +1,9 @@
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/core/runtime:3.1 AS base
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/core/runtime:6 AS base
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 WORKDIR /app
 
-FROM --platform=$BUILDPLATFORM  mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
+FROM --platform=$BUILDPLATFORM  mcr.microsoft.com/dotnet/core/sdk:6 AS build
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 WORKDIR /src
