@@ -25,6 +25,7 @@ namespace WebcamFtpUploader
 
         static async Task Main()
         {
+            Console.WriteLine("Starting");
             Ensure(_cameraBaseAddress, "CAMERA_BASE_ADDRESS");
             Ensure(_cameraUsername, "CAMERA_USERNAME");
             Ensure(_cameraPassword, "CAMERA_PASSWORD");
