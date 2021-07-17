@@ -23,6 +23,13 @@ namespace WebcamFtpUploader
 
         static async Task Main()
         {
+            Ensure(_cameraBaseAddress, "CAMERA_BASE_ADDRESS");
+            Ensure(_cameraUsername, "CAMERA_USERNAME");
+            Ensure(_cameraPassword, "CAMERA_PASSWORD");
+            Ensure(_wundergroundDeviceId, "WUNDERGROUND_CAM_ID");
+            Ensure(_wundergroundDeviceKey, "WUNDERGROUND_CAM_KEY");
+            Ensure(_uploadInterval, "UPLOAD_INTERVAL_MS");
+
             _healthcheckTimer.Change(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
             var httpClient = new HttpClient
             {
@@ -58,6 +65,19 @@ namespace WebcamFtpUploader
                 Console.WriteLine($"{response.ResponseUri} uploaded: {response.StatusCode}: {response.StatusDescription}");
                 _lastUpdate = DateTimeOffset.UtcNow;
                 await Task.Delay(_uploadInterval);
+            }
+        }
+
+        private static void Ensure(object value, string name)
+        {
+            if(value is null)
+            {
+                throw new ArgumentNullException(name);
+            }
+
+            if(value is "")
+            {
+                throw new ArgumentException("Argument missing value", name);
             }
         }
 

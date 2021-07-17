@@ -1,7 +1,16 @@
 {
   "profiles": {
     "WebcamFtpUploader": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "environmentVariables": {
+        "UPLOAD_INTERVAL_MS": "60000",
+        "CAMERA_BASE_ADDRESS": "http://192.168.1.254/",
+        "CAMERA_USERNAME": "test",
+        "CAMERA_PASSWORD": "test",
+
+        "WUNDERGROUND_CAM_ID": "test",
+        "WUNDERGROUND_CAM_KEY": "test"
+      }
     }
   }
 }
