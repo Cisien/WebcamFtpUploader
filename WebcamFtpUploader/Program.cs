@@ -16,8 +16,7 @@ namespace WebcamFtpUploader
         private static readonly string _cameraUsername = Environment.GetEnvironmentVariable("CAMERA_USERNAME");
         private static readonly string _cameraPassword = Environment.GetEnvironmentVariable("CAMERA_PASSWORD");
 
-        private static readonly string _wundergroundDeviceId = Environment.GetEnvironmentVariable("WUNDERGROUND_CAM_ID");
-        private static readonly string _wundergroundDeviceKey = Environment.GetEnvironmentVariable("WUNDERGROUND_CAM_KEY");
+        private static readonly string _pasteKey = Environment.GetEnvironmentVariable("PASTE_KEY");
         private static readonly int _uploadInterval = int.Parse(Environment.GetEnvironmentVariable("UPLOAD_INTERVAL_MS"));
 
         private static readonly Timer _healthcheckTimer = new(HealthCheck);
@@ -29,30 +28,29 @@ namespace WebcamFtpUploader
             Ensure(_cameraBaseAddress, "CAMERA_BASE_ADDRESS");
             Ensure(_cameraUsername, "CAMERA_USERNAME");
             Ensure(_cameraPassword, "CAMERA_PASSWORD");
-            Ensure(_wundergroundDeviceId, "WUNDERGROUND_CAM_ID");
-            Ensure(_wundergroundDeviceKey, "WUNDERGROUND_CAM_KEY");
+            Ensure(_pasteKey, "PASTE_KEY");
             Ensure(_uploadInterval, "UPLOAD_INTERVAL_MS");
 
             _healthcheckTimer.Change(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
-            var httpClient = new HttpClient
+            var cameraClient = new HttpClient
             {
                 BaseAddress = new Uri($"{_cameraBaseAddress}")
             };
-
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_cameraUsername}:{_cameraPassword}")));
-            using var client = new FtpClient();
-            client.EncryptionMode = FtpEncryptionMode.None;
-
-            FtpTrace.LogToConsole = true;
+            cameraClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_cameraUsername}:{_cameraPassword}")));
+            var pasteClient = new HttpClient()
+            {
+                BaseAddress = new Uri("https://paste.cisien.dev/submit/postspecific")
+            };
+            pasteClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Token", _pasteKey);
 
             while (true)
             {
                 var cts = new CancellationTokenSource(_uploadInterval / 2);
                 try
                 {
-                    Console.WriteLine($"Beginning Read from WebCam: {httpClient.BaseAddress}/ISAPI/Streaming/channels/101/picture");
+                    Console.WriteLine($"Beginning Read from WebCam: {cameraClient.BaseAddress}ISAPI/Streaming/channels/101/picture");
                     
-                    using var imgRequest = await httpClient.GetAsync("/ISAPI/Streaming/channels/101/picture", cts.Token);
+                    using var imgRequest = await cameraClient.GetAsync("ISAPI/Streaming/channels/101/picture", cts.Token);
                     if (!imgRequest.IsSuccessStatusCode)
                     {
                         var responseBody = await imgRequest.Content.ReadAsStringAsync(cts.Token);
@@ -63,38 +61,28 @@ namespace WebcamFtpUploader
                     using var imgStream = await imgRequest.Content.ReadAsStreamAsync(cts.Token);
                     Console.WriteLine("Done reading from webcam");
 
-                    Console.WriteLine("Begin FTP connection");
-                    await client.ConnectAsync(new FtpProfile
+                    var content = new MultipartFormDataContent();
+                    var imgContent = new StreamContent(imgStream);
+                    imgContent.Headers.ContentType = imgRequest.Content.Headers.ContentType;
+                    content.Add(imgContent, "file", "webcam.jpg");
+
+                    var pasteResponse = await pasteClient.PostAsync("", content, cts.Token);
+
+                    var pasteBody = await pasteResponse.Content.ReadAsStringAsync();
+                    if(pasteResponse.IsSuccessStatusCode)
                     {
-                        Host = "webcam.wunderground.com",
-                        DataConnection = FtpDataConnectionType.PASV,
-                        RetryAttempts = 3,
-                        Credentials = new NetworkCredential(_wundergroundDeviceId, _wundergroundDeviceKey),
-                        Encoding = Encoding.UTF8
-                    });
-                    Console.WriteLine($"FTP Connection established");
+                        Console.WriteLine("Paste upload completed");
+                        _lastUpdate = DateTimeOffset.UtcNow;
+                    }
 
-                    Console.WriteLine("Uploading image");
-                    var result = await client.UploadAsync(imgStream, "image.jpg");
+                    Console.WriteLine(pasteBody);
 
-                    Console.WriteLine($"Done uploading image; FTP Result: {result}");
-                    _lastUpdate = DateTimeOffset.UtcNow;
-
-                    await client.DisconnectAsync(cts.Token);
                     await Task.Delay(_uploadInterval);
                 }
                 catch(Exception ex)
                 {
                     Console.WriteLine($"Exception: {ex.Message}");
                     await Task.Delay(1000, cts.Token);
-                }
-                finally
-                {
-                    cts.Dispose();
-                    if (client.IsConnected)
-                    {
-                        await client.DisconnectAsync();
-                    }
                 }
             }
         }

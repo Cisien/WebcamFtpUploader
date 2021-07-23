@@ -5,11 +5,10 @@
       "environmentVariables": {
         "UPLOAD_INTERVAL_MS": "60000",
         "CAMERA_BASE_ADDRESS": "http://192.168.1.254/",
-        "CAMERA_USERNAME": "test",
-        "CAMERA_PASSWORD": "test",
+        "CAMERA_USERNAME": "TEST",
+        "CAMERA_PASSWORD": "TEST",
 
-        "WUNDERGROUND_CAM_ID": "test",
-        "WUNDERGROUND_CAM_KEY": "test"
+        "PASTE_KEY": "TEST"
       }
     }
   }
